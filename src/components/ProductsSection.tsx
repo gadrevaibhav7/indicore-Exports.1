@@ -14,8 +14,16 @@ import {
   Flame,
   ShieldCheck,
   Award,
-  ArrowRight
+  ArrowRight,
+  AlertCircle,
+  ExternalLink
 } from 'lucide-react';
+import {
+  submitTradeInquiry,
+  buildMailtoHref,
+  type TradeInquiryInput,
+  type TradeInquiryResult,
+} from '../utils/inquiryClient';
 
 interface InquiryForm {
   name: string;
@@ -34,8 +42,11 @@ export default function ProductsSection() {
     gradeText?: string;
   } | null>(null);
 
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<TradeInquiryResult | null>(null);
+  const [submittedPayload, setSubmittedPayload] = useState<TradeInquiryInput | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
   const [formData, setFormData] = useState<InquiryForm>({
     name: '',
     email: '',
@@ -47,12 +58,17 @@ export default function ProductsSection() {
 
   const handleOpenInquiry = (itemName: string, category: string, image: string, gradeText?: string) => {
     setActiveInquiryItem({ name: itemName, category, image, gradeText });
-    setFormSubmitted(false);
+    setSubmissionResult(null);
+    setSubmittedPayload(null);
     setSubmitting(false);
+    setErrorMessage(null);
   };
 
   const handleCloseInquiry = () => {
     setActiveInquiryItem(null);
+    setSubmissionResult(null);
+    setSubmittedPayload(null);
+    setErrorMessage(null);
     setFormData({
       name: '',
       email: '',
@@ -66,21 +82,54 @@ export default function ProductsSection() {
   const handleInquiryChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (errorMessage) setErrorMessage(null);
   };
 
-  const handleInquirySubmit = (e: React.FormEvent) => {
+  const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.email || !formData.company || !formData.port) {
-      alert("Please fill out all required fields.");
+    if (!activeInquiryItem) return;
+
+    setErrorMessage(null);
+    if (!formData.name.trim() || !formData.email.trim() || !formData.company.trim() || !formData.port.trim()) {
+      setErrorMessage("Please fill out all required fields (Name, Email, Company, and Destination Port).");
       return;
     }
-    
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      setErrorMessage("Please enter a valid business email address.");
+      return;
+    }
+
+    const payload: TradeInquiryInput = {
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      company: formData.company.trim(),
+      inquiryType: activeInquiryItem.category,
+      productName: activeInquiryItem.gradeText
+        ? `${activeInquiryItem.name} (${activeInquiryItem.gradeText})`
+        : activeInquiryItem.name,
+      destinationPort: formData.port.trim(),
+      quantity: formData.quantity.trim(),
+      currencyTerms: formData.notes.trim(),
+      message: `Quote request for ${activeInquiryItem.name}. Destination Port: ${formData.port.trim()}. Quantity: ${formData.quantity.trim() || 'Standard Trial MOQ'}. Terms/Notes: ${formData.notes.trim() || 'Standard FOB/CIF'}`,
+      sourceForm: 'product_modal',
+      agreedToTerms: true,
+    };
+
     setSubmitting(true);
-    // Simulate cooperative processing latency
-    setTimeout(() => {
+    try {
+      const result = await submitTradeInquiry(payload);
+      setSubmittedPayload(payload);
+      setSubmissionResult(result);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "Unable to dispatch inquiry right now. Please try again."
+      );
+    } finally {
       setSubmitting(false);
-      setFormSubmitted(true);
-    }, 1200);
+    }
   };
 
   return (
@@ -594,16 +643,16 @@ export default function ProductsSection() {
             </div>
 
             <div className="flex flex-col sm:flex-row justify-center items-center gap-4 relative z-10 pt-4">
-              <a 
-                href="/catalog.pdf"
-                onClick={(e) => {
-                  e.preventDefault();
-                  alert("📥 Commercial Spices & Plate Export Catalog requested successfully! Your download will start momentarily.");
+              <button
+                type="button"
+                onClick={() => {
+                  setCatalogNotice("Commercial Spices & Plate Export Catalog request noted — click Contact Sales Agent to receive the full PDF via email.");
+                  setTimeout(() => setCatalogNotice(null), 5000);
                 }}
                 className="bg-[#a8e7c5] hover:bg-[#8fd8ad] text-[#0f5238] font-bold py-3.5 px-8 rounded-full text-xs tracking-wider uppercase transition-all shadow active:scale-95 font-sans cursor-pointer text-center w-full sm:w-auto"
               >
                 Download Catalog
-              </a>
+              </button>
               <button 
                 onClick={() => handleOpenInquiry("General Sourcing Request", "general", "https://images.unsplash.com/photo-1596797038530-2c107229654b?q=80&w=800&auto=format&fit=crop", "All-In-One Port Logistics")}
                 className="border border-white/60 hover:border-white hover:bg-white/10 text-white font-bold py-3.5 px-8 rounded-full text-xs tracking-wider uppercase transition-all active:scale-95 font-sans cursor-pointer text-center w-full sm:w-auto"
@@ -611,6 +660,11 @@ export default function ProductsSection() {
                 Contact Sales Agent
               </button>
             </div>
+            {catalogNotice && (
+              <p className="relative z-10 text-xs text-[#e6fcf1] bg-white/10 border border-white/20 rounded-xl px-4 py-2 max-w-lg mx-auto">
+                {catalogNotice}
+              </p>
+            )}
 
           </div>
         </div>
@@ -657,8 +711,17 @@ export default function ProductsSection() {
 
               {/* Form Content */}
               <div className="p-6 md:p-8 max-h-[75vh] overflow-y-auto">
-                {!formSubmitted ? (
-                  <form onSubmit={handleInquirySubmit} className="space-y-4">
+                {!submissionResult ? (
+                  <form onSubmit={handleInquirySubmit} noValidate className="space-y-4">
+                    {errorMessage && (
+                      <div
+                        role="alert"
+                        className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 px-3.5 py-2.5 rounded-xl text-xs font-medium"
+                      >
+                        <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                        <span>{errorMessage}</span>
+                      </div>
+                    )}
                     
                     {/* Item indicator */}
                     <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200/50">
@@ -813,29 +876,48 @@ export default function ProductsSection() {
                     
                     <div className="space-y-2">
                       <h3 className="font-display font-bold text-xl text-[#121c2a]">
-                        Sourcing Alert Dispatch Complete!
+                        {submissionResult.emailSent ? 'Sourcing Inquiry Sent to Email!' : 'Sourcing Inquiry Logged'}
                       </h3>
                       <p className="text-gray-500 text-sm max-w-md mx-auto">
-                        Thank you, <span className="font-semibold text-black">{formData.name}</span>. Your bulk trade request for <span className="font-bold text-[#0f5238]">{activeInquiryItem.name}</span> has been logged under ID <span className="font-mono text-[#904d00] font-bold bg-[#ffdcc3] px-1.5 py-0.5 rounded text-xs">COOP-{(Math.floor(Math.random() * 8999) + 1000)}</span>.
+                        Thank you, <span className="font-semibold text-black">{submittedPayload?.name}</span>. Your bulk trade request for <span className="font-bold text-[#0f5238]">{activeInquiryItem.name}</span> has been logged under ID <span className="font-mono text-[#904d00] font-bold bg-[#ffdcc3] px-1.5 py-0.5 rounded text-xs">{submissionResult.referenceId}</span>.
+                      </p>
+                      <p className="text-xs text-[#0f5238] font-medium max-w-md mx-auto">
+                        {submissionResult.statusMessage}
                       </p>
                     </div>
 
                     <div className="bg-[#f3f6ff] p-4 rounded-xl text-xs font-mono text-left max-w-md mx-auto space-y-1.5 text-gray-700 border border-[#d9e3f6]">
-                      <div><span className="text-gray-400">Importer:</span> {formData.company}</div>
-                      <div><span className="text-gray-400">Custom Port:</span> {formData.port}</div>
-                      <div><span className="text-gray-400">Requested Volume:</span> {formData.quantity || "Standard Trial MOQ"}</div>
+                      <div><span className="text-gray-400">Importer:</span> {submittedPayload?.company}</div>
+                      <div><span className="text-gray-400">Custom Port:</span> {submittedPayload?.destinationPort}</div>
+                      <div><span className="text-gray-400">Requested Volume:</span> {submittedPayload?.quantity || "Standard Trial MOQ"}</div>
                     </div>
 
                     <p className="text-xs text-gray-500">
-                      An export consultant will dispatch official laboratory certificates, SGS reports, and customized CIF freight sheets to <span className="text-black font-semibold">{formData.email}</span> within 12 business hours.
+                      An export consultant will reply to <span className="text-black font-semibold">{submittedPayload?.email}</span> within 12 business hours.
                     </p>
 
-                    <button
-                      onClick={handleCloseInquiry}
-                      className="bg-[#0f5238] hover:bg-[#0a3b27] text-white py-2 px-6 rounded-lg font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
-                    >
-                      Return to Portfolio
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      {submittedPayload && (
+                        <a
+                          href={buildMailtoHref(
+                            submittedPayload,
+                            submissionResult.referenceId,
+                            submissionResult.recipientEmails
+                          )}
+                          className="inline-flex items-center gap-1.5 bg-white border border-[#0f5238] text-[#0f5238] hover:bg-[#e6fcf1] py-2 px-4 rounded-lg font-bold text-xs uppercase tracking-wider transition-all"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>Send via Email App</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      <button
+                        onClick={handleCloseInquiry}
+                        className="bg-[#0f5238] hover:bg-[#0a3b27] text-white py-2 px-6 rounded-lg font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
+                      >
+                        Return to Portfolio
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

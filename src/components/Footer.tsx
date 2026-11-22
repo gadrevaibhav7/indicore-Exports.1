@@ -115,16 +115,16 @@ export default function Footer({ setTab }: FooterProps) {
           <div className="flex flex-col gap-2.5">
             <span className="font-bold text-xs uppercase tracking-widest text-[#0e5138] font-mono">Information</span>
             <button 
-              onClick={() => alert("Simulated Policy document. All Indicore trade lanes are GDPR and SOC2 audited.")}
-              className="text-left text-xs font-semibold text-text-muted hover:text-spice-gold underline underline-offset-4 decoration-border-sage transition-all duration-200"
+              onClick={() => setTab('contact')}
+              className="text-left text-xs font-semibold text-text-muted hover:text-spice-gold underline underline-offset-4 decoration-border-sage transition-all duration-200 cursor-pointer"
             >
-              Privacy Policy
+              Privacy &amp; GDPR Policy
             </button>
             <button 
-              onClick={() => alert("Simulated Trade Conditions document. All ocean freights follow Incoterms 2020 (FOB/CIF guidelines).")}
-              className="text-left text-xs font-semibold text-text-muted hover:text-spice-gold underline underline-offset-4 decoration-border-sage transition-all duration-200"
+              onClick={() => setTab('why')}
+              className="text-left text-xs font-semibold text-text-muted hover:text-spice-gold underline underline-offset-4 decoration-border-sage transition-all duration-200 cursor-pointer"
             >
-              Terms of Service
+              Trade Terms (Incoterms 2020)
             </button>
           </div>
 
